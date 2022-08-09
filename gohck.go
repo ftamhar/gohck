@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -77,10 +78,8 @@ func checkUrls(ctx context.Context, wg *sync.WaitGroup) {
 	t := time.NewTicker(time.Millisecond)
 	defer t.Stop()
 
-	mapServerIsShutdown := make(map[string]time.Time)
-	mapServerHasChecked := make(map[string]struct{})
+	mapServerIsDown := make(map[string]int)
 	isFirstRun := true
-	durReportDelay := time.Duration(Config.DelayReport) * time.Minute
 	worker := make(chan struct{}, Config.Worker)
 
 	for {
@@ -95,56 +94,21 @@ func checkUrls(ctx context.Context, wg *sync.WaitGroup) {
 				isFirstRun = false
 			}
 
-			now := time.Now()
 			for _, url := range Config.Urls {
-
 				mutex.Lock()
-				e, ok := mapServerIsShutdown[url]
-				mutex.Unlock()
-				if ok {
-					mutex.Lock()
-					_, hasChecked := mapServerHasChecked[url]
-					if hasChecked {
-						mutex.Unlock()
-						continue
-					}
-
-					mapServerHasChecked[url] = struct{}{}
+				if _, ok := mapServerIsDown[url]; ok {
 					mutex.Unlock()
-
-					sub := now.Sub(e) - durReportDelay
-					if sub < 0 {
-						sub *= -1
-					}
-
-					go func(ctx context.Context, url string, dur time.Duration) {
-						select {
-						case <-ctx.Done():
-							return
-						case <-time.After(dur):
-
-							worker <- struct{}{}
-							checkUrl(url, worker, mapServerIsShutdown)
-
-							time.Sleep(time.Second * 8)
-							mutex.Lock()
-							delete(mapServerHasChecked, url)
-							mutex.Unlock()
-							return
-						}
-					}(ctx, url, sub)
-
 					continue
 				}
-
+				mutex.Unlock()
 				worker <- struct{}{}
-				go checkUrl(url, worker, mapServerIsShutdown)
+				go checkUrl(url, worker, mapServerIsDown)
 			}
 		}
 	}
 }
 
-func checkUrl(url string, wk chan struct{}, mapIfError map[string]time.Time) {
+func checkUrl(url string, wk chan struct{}, mapRetryServerIsDown map[string]int) {
 	defer func() {
 		<-wk
 	}()
@@ -153,37 +117,63 @@ func checkUrl(url string, wk chan struct{}, mapIfError map[string]time.Time) {
 	if err != nil {
 		log.Printf("Error: %s", err)
 
-		_, _, err = api.PostMessage(Config.SlackChannel, slack.MsgOptionText("url "+url+" tidak dapat diakses", false))
-		if err != nil {
-			log.Printf("Error: %s", err)
+		mutex.Lock()
+		defer mutex.Unlock()
+		dur, ok := mapRetryServerIsDown[url]
+		if !ok || dur >= Config.DelayReport {
+			_, _, err = api.PostMessage(Config.SlackChannel, slack.MsgOptionText(time.Now().Format(time.RFC1123)+" - url "+url+" tidak dapat diakses", false))
+			if err != nil {
+				log.Printf("Error: %s", err)
+			}
+			if dur >= Config.DelayReport {
+				mapRetryServerIsDown[url] = 0
+			}
 		}
 
-		mutex.Lock()
-		mapIfError[url] = time.Now()
-		mutex.Unlock()
+		mapRetryServerIsDown[url]++
+
+		go func() {
+			time.Sleep(time.Minute)
+			wk <- struct{}{}
+			checkUrl(url, wk, mapRetryServerIsDown)
+		}()
+
 		return
 	}
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		_, _, err = api.PostMessage(Config.SlackChannel, slack.MsgOptionText("url "+url+" tidak dapat diakses", false))
-		if err != nil {
-			log.Printf("Error: %s", err)
+		mutex.Lock()
+		defer mutex.Unlock()
+		dur, ok := mapRetryServerIsDown[url]
+		if !ok || dur >= Config.DelayReport {
+			_, _, err = api.PostMessage(Config.SlackChannel, slack.MsgOptionText(time.Now().Format(time.RFC1123)+" - url "+url+" meresponse dengan status code: "+strconv.Itoa(resp.StatusCode), false))
+			if err != nil {
+				log.Printf("Error: %s", err)
+			}
+			if dur >= Config.DelayReport {
+				mapRetryServerIsDown[url] = 0
+			}
 		}
 
-		mutex.Lock()
-		mapIfError[url] = time.Now()
-		mutex.Unlock()
+		mapRetryServerIsDown[url]++
+
+		go func() {
+			time.Sleep(time.Minute)
+			wk <- struct{}{}
+			checkUrl(url, wk, mapRetryServerIsDown)
+		}()
+
 		return
 	}
 
 	mutex.Lock()
-	_, ok := mapIfError[url]
+	_, ok := mapRetryServerIsDown[url]
 	if ok {
-		delete(mapIfError, url)
+		delete(mapRetryServerIsDown, url)
 		mutex.Unlock()
 
-		_, _, err := api.PostMessage(Config.SlackChannel, slack.MsgOptionText("url "+url+" dapat diakses kembali", false))
+		_, _, err := api.PostMessage(Config.SlackChannel, slack.MsgOptionText(time.Now().Format(time.RFC1123)+" - url "+url+" sudah dapat diakses kembali", false))
 		if err != nil {
 			log.Printf("Error: %s", err)
 		}

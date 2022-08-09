@@ -25,7 +25,7 @@ go install github.com/ftamhar/gohck
 slackapikey: <SLACK_API_KEY>
 slackchannel: "#test"
 delayreport: 30 # minute
-delaycheck: 5 # minute
+delaycheck: 1 # minute
 worker: 5
 
 urls:

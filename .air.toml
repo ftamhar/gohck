@@ -4,7 +4,8 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = []
-  bin = "./tmp/main -c cfg.yml"
+  # bin = "./tmp/main -c cfg.yml"
+  bin = "/usr/local/go/bin/go run -race gohck.go -c cfg.yml"
   cmd = "go build -o ./tmp/main ."
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
