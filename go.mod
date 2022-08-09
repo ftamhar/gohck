@@ -1,4 +1,4 @@
-module gohck
+module github.com/ftamhar/gohck
 
 go 1.19
 

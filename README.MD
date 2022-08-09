@@ -15,7 +15,7 @@ Bot slack yang sudah menerapkan pattern simple semaphore, berguna untuk mengirim
 ### Installing
 
 ```sh
-go install github.com/ftamhar/gohck 
+go install github.com/ftamhar/gohck@latest
 ```
 
 ### Executing program
