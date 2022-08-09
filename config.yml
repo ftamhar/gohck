@@ -1,0 +1,10 @@
+slackapikey: <SLACK_API_KEY>
+slackchannel: "#test"
+delayreport: 30 # minute
+delaycheck: 5 # minute
+worker: 5
+
+urls:
+  - https://www.google.com
+  - https://github.com
+  - https://gitlab.com
