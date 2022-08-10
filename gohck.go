@@ -93,7 +93,7 @@ func checkUrls(ctx context.Context, wg *sync.WaitGroup) {
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("exiting goroutine")
+			fmt.Println("exiting goroutines")
 			return
 
 		case <-t.C:
@@ -109,16 +109,18 @@ func checkUrls(ctx context.Context, wg *sync.WaitGroup) {
 					continue
 				}
 				mutex.Unlock()
+				wg.Add(1)
 				worker <- struct{}{}
-				go checkUrl(url, worker, mapServerIsDown)
+				go checkUrl(ctx, url, worker, mapServerIsDown, wg)
 			}
 		}
 	}
 }
 
-func checkUrl(url string, wk chan struct{}, mapRetryServerIsDown map[string]int) {
+func checkUrl(ctx context.Context, url string, wk chan struct{}, mapRetryServerIsDown map[string]int, wg *sync.WaitGroup) {
 	defer func() {
 		<-wk
+		wg.Done()
 	}()
 
 	resp, err := http.Get(url)
@@ -141,9 +143,14 @@ func checkUrl(url string, wk chan struct{}, mapRetryServerIsDown map[string]int)
 		mapRetryServerIsDown[url]++
 
 		go func() {
-			time.Sleep(time.Minute)
-			wk <- struct{}{}
-			checkUrl(url, wk, mapRetryServerIsDown)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Minute):
+				wg.Add(1)
+				wk <- struct{}{}
+				checkUrl(ctx, url, wk, mapRetryServerIsDown, wg)
+			}
 		}()
 
 		return
@@ -167,9 +174,14 @@ func checkUrl(url string, wk chan struct{}, mapRetryServerIsDown map[string]int)
 		mapRetryServerIsDown[url]++
 
 		go func() {
-			time.Sleep(time.Minute)
-			wk <- struct{}{}
-			checkUrl(url, wk, mapRetryServerIsDown)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Minute):
+				wg.Add(1)
+				wk <- struct{}{}
+				checkUrl(ctx, url, wk, mapRetryServerIsDown, wg)
+			}
 		}()
 
 		return
