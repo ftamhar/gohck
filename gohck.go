@@ -142,12 +142,13 @@ func checkUrl(ctx context.Context, url string, wk chan struct{}, mapRetryServerI
 
 		mapRetryServerIsDown[url]++
 
+		wg.Add(1)
 		go func() {
 			select {
 			case <-ctx.Done():
+				wg.Done()
 				return
 			case <-time.After(time.Minute):
-				wg.Add(1)
 				wk <- struct{}{}
 				checkUrl(ctx, url, wk, mapRetryServerIsDown, wg)
 			}
@@ -173,12 +174,13 @@ func checkUrl(ctx context.Context, url string, wk chan struct{}, mapRetryServerI
 
 		mapRetryServerIsDown[url]++
 
+		wg.Add(1)
 		go func() {
 			select {
 			case <-ctx.Done():
+				wg.Done()
 				return
 			case <-time.After(time.Minute):
-				wg.Add(1)
 				wk <- struct{}{}
 				checkUrl(ctx, url, wk, mapRetryServerIsDown, wg)
 			}
