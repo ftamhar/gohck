@@ -34,6 +34,8 @@ var (
 		// delay check url (minute)
 		DelayCheck int `default:"1" env:"DELAY_CHECK"`
 
+		Timezone string `default:"Asia/Jakarta" env:"TIMEZONE"`
+
 		// jumlah worker
 		Worker int `default:"5" env:"WORKER"`
 	}{}
@@ -41,6 +43,7 @@ var (
 	config string
 	api    *slack.Client
 	mutex  sync.Mutex
+	tz     *time.Location
 )
 
 func main() {
@@ -48,6 +51,11 @@ func main() {
 	flag.Parse()
 
 	err := configor.Load(&Config, config)
+	if err != nil {
+		panic(err)
+	}
+
+	tz, err = time.LoadLocation(Config.Timezone)
 	if err != nil {
 		panic(err)
 	}
@@ -121,7 +129,7 @@ func checkUrl(url string, wk chan struct{}, mapRetryServerIsDown map[string]int)
 		defer mutex.Unlock()
 		dur, ok := mapRetryServerIsDown[url]
 		if !ok || dur >= Config.DelayReport {
-			_, _, err = api.PostMessage(Config.SlackChannel, slack.MsgOptionText(time.Now().Format(time.RFC1123)+" - url "+url+" tidak dapat diakses", false))
+			_, _, err = api.PostMessage(Config.SlackChannel, slack.MsgOptionText(time.Now().In(tz).Format(time.RFC1123)+" - url "+url+" tidak dapat diakses", false))
 			if err != nil {
 				log.Printf("Error: %s", err)
 			}
@@ -147,7 +155,7 @@ func checkUrl(url string, wk chan struct{}, mapRetryServerIsDown map[string]int)
 		defer mutex.Unlock()
 		dur, ok := mapRetryServerIsDown[url]
 		if !ok || dur >= Config.DelayReport {
-			_, _, err = api.PostMessage(Config.SlackChannel, slack.MsgOptionText(time.Now().Format(time.RFC1123)+" - url "+url+" meresponse dengan status code: "+strconv.Itoa(resp.StatusCode), false))
+			_, _, err = api.PostMessage(Config.SlackChannel, slack.MsgOptionText(time.Now().In(tz).Format(time.RFC1123)+" - url "+url+" meresponse dengan status code: "+strconv.Itoa(resp.StatusCode), false))
 			if err != nil {
 				log.Printf("Error: %s", err)
 			}
@@ -173,7 +181,7 @@ func checkUrl(url string, wk chan struct{}, mapRetryServerIsDown map[string]int)
 		delete(mapRetryServerIsDown, url)
 		mutex.Unlock()
 
-		_, _, err := api.PostMessage(Config.SlackChannel, slack.MsgOptionText(time.Now().Format(time.RFC1123)+" - url "+url+" sudah dapat diakses kembali", false))
+		_, _, err := api.PostMessage(Config.SlackChannel, slack.MsgOptionText(time.Now().In(tz).Format(time.RFC1123)+" - url "+url+" sudah dapat diakses kembali", false))
 		if err != nil {
 			log.Printf("Error: %s", err)
 		}

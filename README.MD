@@ -27,6 +27,7 @@ slackchannel: "#test"
 delayreport: 30 # minute
 delaycheck: 1 # minute
 worker: 5
+timezone: Asia/Jakarta
 
 urls:
   - https://www.google.com
